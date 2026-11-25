@@ -236,10 +236,16 @@ function codesFromText(t) { // lấy các chuỗi >= 6 chữ số, sửa nhầm 
   for (const m of t.matchAll(/[0-9OoIl|]{6,}/g)) { const c = m[0].replace(/[Oo]/g, '0').replace(/[Il|]/g, '1'); if (/^\d{6,}$/.test(c)) out.add(c); }
   return [...out];
 }
+const noZero = x => String(x).replace(/^0+/, '');
+function findClass(code) { // OCR hay làm mất số 0 đầu: so khớp cả khi bỏ số 0 đầu
+  if (classes.has(code)) return classes.get(code);
+  const k = noZero(code);
+  for (const c of classes.values()) if (noZero(c.code) === k) return c;
+}
 function addByCodes(codes) {
   const added = [], dup = [], clash = [], miss = [];
   for (const code of codes) {
-    const c = classes.get(code);
+    const c = findClass(code);
     if (!c) { miss.push(code); continue; }
     if (sel.get(c.name) === c) { dup.push(code); continue; }
     const x = conflict(c);
@@ -248,6 +254,19 @@ function addByCodes(codes) {
   }
   return { added, dup, clash, miss };
 }
+function applyCodes(codes, where) {
+  const r = addByCodes(codes);
+  refresh(); saveState();
+  const li = (t, a) => a.length ? `<br><b>${t} (${a.length}):</b> ${a.join('; ')}` : '';
+  const head = r.added.length ? `Đã thêm ${r.added.length} lớp lên lịch.` : r.dup.length && !r.clash.length && !r.miss.length ? 'Các lớp trong ảnh đã có sẵn trên lịch rồi.' : 'Chưa thêm được lớp nào.';
+  toast(`${head} (đọc được ${codes.length} mã ${where})` + li('Đã thêm', r.added) + li('Đã có sẵn', r.dup) + li('Bị trùng lịch, không thêm', r.clash) + li('Không có trong file Excel', r.miss), !r.clash.length && !r.miss.length);
+}
+$('#codes').onclick = () => {
+  if (!classes.size) return toast('Hãy nhập file Excel thời khóa biểu trước.');
+  const t = prompt('Dán các mã lớp học phần (cách nhau bằng dấu cách, dấu phẩy hoặc xuống dòng):'); if (!t) return;
+  const codes = [...new Set(t.match(/\d{6,}/g) || [])];
+  codes.length ? applyCodes(codes, 'đã nhập') : toast('Không thấy mã nào (mã gồm từ 6 chữ số trở lên).');
+};
 async function importImages(files) {
   files = [...files].filter(f => f.type.startsWith('image/'));
   if (!files.length) return;
@@ -255,15 +274,18 @@ async function importImages(files) {
   try {
     $('#info').textContent = 'Đang tải bộ nhận dạng chữ...'; await loadOCR();
     const codes = new Set();
-    for (let i = 0; i < files.length; i++) {
-      const r = await Tesseract.recognize(await prepImage(files[i]), 'eng', { logger: m => { if (m.status === 'recognizing text') $('#info').textContent = `Đang đọc ảnh ${i + 1}/${files.length}: ${Math.round(m.progress * 100)}%`; } });
-      codesFromText(r.data.text).forEach(c => codes.add(c));
-    }
+    let cur = '';
+    const worker = await Tesseract.createWorker('eng', 1, { logger: m => { if (m.status === 'recognizing text') $('#info').textContent = `Đang đọc ${cur}: ${Math.round(m.progress * 100)}%`; } });
+    await worker.setParameters({ tessedit_pageseg_mode: '11' }); // văn bản rời rạc: hợp với ảnh chụp giao diện/bảng
+    try {
+      for (let i = 0; i < files.length; i++) {
+        cur = `ảnh ${i + 1}/${files.length}`;
+        const r = await worker.recognize(await prepImage(files[i]));
+        codesFromText(r.data.text).forEach(c => codes.add(c));
+      }
+    } finally { await worker.terminate(); }
     if (!codes.size) { renderList(); return toast('Không thấy mã lớp học phần nào trong ảnh. Hãy thử ảnh rõ nét hơn, cắt sát phần có cột Mã LHP.'); }
-    const r = addByCodes([...codes]);
-    refresh(); saveState();
-    const li = (t, a) => a.length ? `<br><b>${t} (${a.length}):</b> ${a.join('; ')}` : '';
-    toast(`Tìm thấy ${codes.size} mã trong ảnh.` + li('Đã thêm vào lịch', r.added) + li('Đã có sẵn', r.dup) + li('Bị trùng lịch, không thêm', r.clash) + li('Không có trong file Excel', r.miss), r.added.length > 0 && !r.clash.length);
+    applyCodes([...codes], 'trong ảnh');
   } catch (err) { renderList(); toast(esc(err.message)); }
 }
 $('#img').onchange = e => { importImages(e.target.files); e.target.value = ''; };
