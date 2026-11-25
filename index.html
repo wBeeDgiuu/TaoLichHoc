@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Xếp lịch học phần – HUIT</title>
+<script>try{var t=localStorage.getItem("huit_theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=t}catch(e){}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<aside id="side">
+  <header>
+    <div class="top"><h1>Xếp lịch học phần</h1><button id="theme" class="btn ghost ico" title="Chuyển sáng / tối" aria-label="Chuyển giao diện sáng/tối">🌙</button></div>
+    <p class="mut">Trường ĐH Công Thương TP.HCM</p>
+    <label class="btn" for="file">Nhập file Excel (.xls, .xlsx)</label>
+    <input id="file" type="file" accept=".xls,.xlsx" hidden>
+    <input id="q" type="search" placeholder="Tìm môn, mã LHP, lớp, giảng viên" disabled>
+    <p id="info" class="mut">Chưa có dữ liệu. Hãy nhập file thời khóa biểu dự kiến.</p>
+  </header>
+  <div id="list"></div>
+</aside>
+<main>
+  <div class="bar">
+    <select id="week" aria-label="Chọn tuần"></select>
+    <span id="sum"></span>
+    <span id="clock" class="clock" title="Giờ hiện tại"></span>
+    <button id="fee" class="btn ghost">Dự toán học phí</button>
+    <button id="clear" class="btn ghost">Xóa lịch đã chọn</button>
+  </div>
+  <div id="ttwrap"><div id="tt"></div></div>
+</main>
+<dialog id="dlg">
+  <h2>Dự toán học phí</h2>
+  <div class="rates">
+    <label>Lý thuyết (đ/tín chỉ)<input id="pLT" type="number" min="0" step="1000" value="863000"></label>
+    <label>Thực hành (đ/tín chỉ)<input id="pTH" type="number" min="0" step="1000" value="1100000"></label>
+  </div>
+  <p class="mut">Buổi học 3 tiết = lý thuyết, còn lại = thực hành (có thể đổi từng môn). Bỏ tích ở môn không tính tiền.</p>
+  <div class="tw"><table><thead><tr><th></th><th>Môn</th><th>Loại</th><th>TC</th><th>Thành tiền</th></tr></thead><tbody id="feebody"></tbody></table></div>
+  <p id="feetotal" class="total"></p>
+  <button class="btn" onclick="this.closest('dialog').close()">Đóng</button>
+</dialog>
+<div id="toast" role="alert" hidden></div>
+<script src="xlsx.full.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
