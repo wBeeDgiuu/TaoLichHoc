@@ -218,6 +218,56 @@ $('#file').onchange = e => {
   }, 30);
   e.target.value = '';
 };
+
+// ---- Nhập ảnh: OCR lấy Mã LHP trong ảnh rồi đưa các lớp khớp lên lịch ----
+const OCR_SRC = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+function loadOCR() {
+  if (window.Tesseract) return Promise.resolve();
+  return new Promise((ok, no) => { const s = document.createElement('script'); s.src = OCR_SRC; s.onload = ok; s.onerror = () => no(new Error('Không tải được bộ nhận dạng chữ (cần Internet ở lần đầu).')); document.head.appendChild(s); });
+}
+async function prepImage(f) { // phóng to + chuyển xám để OCR số chính xác hơn
+  const bmp = await createImageBitmap(f), k = Math.min(3, Math.max(1, 2200 / bmp.width));
+  const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+  const g = cv.getContext('2d'); g.filter = 'grayscale(1) contrast(1.3)'; g.drawImage(bmp, 0, 0, cv.width, cv.height);
+  return cv;
+}
+function codesFromText(t) { // lấy các chuỗi >= 6 chữ số, sửa nhầm O->0, l/I/| ->1
+  const out = new Set();
+  for (const m of t.matchAll(/[0-9OoIl|]{6,}/g)) { const c = m[0].replace(/[Oo]/g, '0').replace(/[Il|]/g, '1'); if (/^\d{6,}$/.test(c)) out.add(c); }
+  return [...out];
+}
+function addByCodes(codes) {
+  const added = [], dup = [], clash = [], miss = [];
+  for (const code of codes) {
+    const c = classes.get(code);
+    if (!c) { miss.push(code); continue; }
+    if (sel.get(c.name) === c) { dup.push(code); continue; }
+    const x = conflict(c);
+    if (x) { clash.push(`${code} (${esc(c.name)}) trùng ${esc(x.with.name)}`); continue; }
+    sel.set(c.name, c); added.push(`${code} ${esc(c.name)}`);
+  }
+  return { added, dup, clash, miss };
+}
+async function importImages(files) {
+  files = [...files].filter(f => f.type.startsWith('image/'));
+  if (!files.length) return;
+  if (!classes.size) return toast('Hãy nhập file Excel thời khóa biểu trước, rồi mới nhập ảnh.');
+  try {
+    $('#info').textContent = 'Đang tải bộ nhận dạng chữ...'; await loadOCR();
+    const codes = new Set();
+    for (let i = 0; i < files.length; i++) {
+      const r = await Tesseract.recognize(await prepImage(files[i]), 'eng', { logger: m => { if (m.status === 'recognizing text') $('#info').textContent = `Đang đọc ảnh ${i + 1}/${files.length}: ${Math.round(m.progress * 100)}%`; } });
+      codesFromText(r.data.text).forEach(c => codes.add(c));
+    }
+    if (!codes.size) { renderList(); return toast('Không thấy mã lớp học phần nào trong ảnh. Hãy thử ảnh rõ nét hơn, cắt sát phần có cột Mã LHP.'); }
+    const r = addByCodes([...codes]);
+    refresh(); saveState();
+    const li = (t, a) => a.length ? `<br><b>${t} (${a.length}):</b> ${a.join('; ')}` : '';
+    toast(`Tìm thấy ${codes.size} mã trong ảnh.` + li('Đã thêm vào lịch', r.added) + li('Đã có sẵn', r.dup) + li('Bị trùng lịch, không thêm', r.clash) + li('Không có trong file Excel', r.miss), r.added.length > 0 && !r.clash.length);
+  } catch (err) { renderList(); toast(esc(err.message)); }
+}
+$('#img').onchange = e => { importImages(e.target.files); e.target.value = ''; };
+document.addEventListener('paste', e => { const f = [...(e.clipboardData?.files || [])]; if (f.some(x => x.type.startsWith('image/'))) { e.preventDefault(); importImages(f); } });
 let qt; $('#q').oninput = () => { clearTimeout(qt); qt = setTimeout(renderList, 200); };
 $('#week').onchange = () => { renderTT(); };
 $('#clear').onclick = () => { sel.clear(); refresh(); saveState(); };
